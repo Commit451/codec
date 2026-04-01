@@ -1,6 +1,10 @@
 @echo off
 REM Launch Compose VST standalone (Rust audio + Compose UI)
-REM Usage: run.bat [--tone sine|noise|sweep] [--freq 440]
+REM Usage:
+REM   run.bat                              default 440Hz sine
+REM   run.bat --tone noise                 white noise
+REM   run.bat --tone sweep                 frequency sweep
+REM   run.bat --wav sample.wav             loop a WAV file
 REM Close this window to shut everything down.
 
 setlocal
@@ -25,5 +29,4 @@ echo.
 echo ✅ Both running. Close this window to stop.
 echo.
 
-REM Wait for user to close — on window close, child processes terminate
 pause >nul

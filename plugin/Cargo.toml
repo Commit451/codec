@@ -20,10 +20,14 @@ required-features = ["standalone"]
 
 [features]
 default = []
-standalone = ["cpal"]
+standalone = ["cpal", "hound"]
 
 [dependencies.cpal]
 version = "0.15"
+optional = true
+
+[dependencies.hound]
+version = "3.5"
 optional = true
 
 [profile.release]

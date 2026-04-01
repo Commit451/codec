@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # Launch Compose VST standalone (Rust audio + Compose UI)
-# Usage: ./run.sh [--tone sine|noise|sweep] [--freq 440]
+# Usage:
+#   ./run.sh                              # default 440Hz sine
+#   ./run.sh --tone noise                 # white noise
+#   ./run.sh --tone sweep                 # frequency sweep
+#   ./run.sh --wav sample.wav             # loop a WAV file
+#   ./run.sh --wav sample.wav --freq 440  # (--freq ignored with --wav)
 # Press Ctrl+C or close the terminal to shut everything down.
 
 set -e
@@ -10,7 +15,6 @@ RUST_ARGS=("$@")
 cleanup() {
     echo ""
     echo "Shutting down..."
-    # Kill child processes
     [[ -n "$RUST_PID" ]] && kill "$RUST_PID" 2>/dev/null
     [[ -n "$UI_PID" ]] && kill "$UI_PID" 2>/dev/null
     wait 2>/dev/null
