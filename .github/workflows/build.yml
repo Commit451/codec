@@ -9,10 +9,7 @@ on:
 jobs:
   rust-plugin:
     name: Rust Plugin
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: plugin
@@ -29,11 +26,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             plugin/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('plugin/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+          key: cargo-${{ hashFiles('plugin/Cargo.lock') }}
+          restore-keys: cargo-
 
-      - name: Install ALSA dev (Linux)
-        if: runner.os == 'Linux'
+      - name: Install ALSA dev
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev
 
       - name: Build VST3 plugin
@@ -42,23 +38,9 @@ jobs:
       - name: Build standalone
         run: cargo build --release --features standalone --bin compose-vst-standalone
 
-      - name: Upload plugin artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: plugin-${{ matrix.os }}
-          path: |
-            plugin/target/release/libcompose_vst_plugin.so
-            plugin/target/release/libcompose_vst_plugin.dylib
-            plugin/target/release/compose_vst_plugin.dll
-            plugin/target/release/compose-vst-standalone*
-          if-no-files-found: ignore
-
   compose-ui:
     name: Compose UI
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ui
@@ -79,14 +61,3 @@ jobs:
 
       - name: Build
         run: ./gradlew build
-
-      - name: Package
-        run: ./gradlew packageReleaseDistributionForCurrentOS
-        continue-on-error: true
-
-      - name: Upload UI artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ui-${{ matrix.os }}
-          path: ui/build/compose/binaries/main-release/
-          if-no-files-found: ignore
