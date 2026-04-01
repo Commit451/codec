@@ -1,0 +1,13 @@
+# Rust
+plugin/target/
+
+# Kotlin/Gradle
+ui/build/
+ui/.gradle/
+ui/gradle/wrapper/gradle-wrapper.jar
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
