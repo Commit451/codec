@@ -9,6 +9,16 @@ plugins {
 group = "com.composevst"
 version = "0.1.0"
 
+// Native package formats are validated against the host OS at configuration
+// time, so only declare the ones valid for the current platform.
+val hostTargetFormats = System.getProperty("os.name").lowercase().let { os ->
+    when {
+        os.contains("mac") -> arrayOf(TargetFormat.Dmg, TargetFormat.Pkg)
+        os.contains("win") -> arrayOf(TargetFormat.Msi, TargetFormat.Exe)
+        else -> arrayOf(TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.AppImage)
+    }
+}
+
 dependencies {
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
@@ -20,7 +30,7 @@ compose.desktop {
         mainClass = "com.composevst.MainKt"
 
         nativeDistributions {
-            targetFormats(TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.AppImage)
+            targetFormats(*hostTargetFormats)
             packageName = "compose-vst-ui"
             packageVersion = "1.0.0"
         }
