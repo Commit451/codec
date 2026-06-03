@@ -56,8 +56,5 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Generate wrapper (if missing)
-        run: gradle wrapper
-
       - name: Build
-        run: ./gradlew build
+        run: ./gradlew build --no-daemon
