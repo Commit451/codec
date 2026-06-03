@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Launch Compose VST standalone (Rust audio + Compose UI)
 # Usage:
-#   ./run.sh                              # default 440Hz sine
+#   ./run.sh                              # loop the bundled loop.wav (default)
+#   ./run.sh --tone sine                  # 440Hz sine test tone
+#   ./run.sh --tone sine --freq 880       # 880Hz sine test tone
 #   ./run.sh --tone noise                 # white noise
 #   ./run.sh --tone sweep                 # frequency sweep
-#   ./run.sh --wav sample.wav             # loop a WAV file
-#   ./run.sh --wav sample.wav --freq 440  # (--freq ignored with --wav)
+#   ./run.sh --wav sample.wav             # loop a different WAV file
 # Press Ctrl+C or close the terminal to shut everything down.
 
 set -e
@@ -21,6 +22,25 @@ cleanup() {
     echo "Done."
 }
 trap cleanup EXIT INT TERM
+
+# Default source: loop the bundled loop.wav through the effect.
+# Passing --tone / --freq / --wav overrides this and skips the loop.
+source_specified=0
+for arg in "$@"; do
+    case "$arg" in
+        --tone|--freq|--wav) source_specified=1; break ;;
+    esac
+done
+
+if [[ "$source_specified" == "0" ]]; then
+    LOOP_WAV="$SCRIPT_DIR/loop.wav"
+    if [[ -f "$LOOP_WAV" ]]; then
+        echo "🔁 Looping loop.wav (pass --tone sine for a test tone)"
+        RUST_ARGS=(--wav "$LOOP_WAV" "${RUST_ARGS[@]}")
+    else
+        echo "⚠ loop.wav not found at $LOOP_WAV — using default test tone" >&2
+    fi
+fi
 
 # Build and launch Rust standalone
 echo "▶ Starting Rust audio engine..."
@@ -45,5 +65,8 @@ echo ""
 echo "✅ Both running. Press Ctrl+C to stop."
 echo ""
 
-# Wait for either process to exit
-wait -n "$RUST_PID" "$UI_PID" 2>/dev/null
+# Wait for either process to exit.
+# (Note: `wait -n` needs bash 4.3+; macOS ships bash 3.2, so we poll instead.)
+while kill -0 "$RUST_PID" 2>/dev/null && kill -0 "$UI_PID" 2>/dev/null; do
+    sleep 1
+done
