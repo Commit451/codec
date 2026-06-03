@@ -1,17 +1,17 @@
-; Inno Setup script for Compose VST (Windows).
+; Inno Setup script for Codec (Windows).
 ; Inno Setup is free: https://jrsoftware.org/isinfo.php
 ;
 ; Build the plugin bundle ON a Windows machine first (cross-compiling baseview
 ; from macOS/Linux is impractical), then compile this installer:
 ;
-;   cargo xtask bundle compose-vst-plugin --release
+;   cargo xtask bundle codec --release
 ;   iscc packaging\windows\installer.iss        ; or open this file in the Inno Setup IDE
 ;
 ; Produces: dist\codec-<version>-setup.exe
 
-#define ProductName "Compose VST"
+#define ProductName "Codec"
 #define ProductVersion "0.1.0"
-#define ProductPublisher "compose-vst"
+#define ProductPublisher "Commit451"
 ; Bundled plugin output, relative to this .iss file.
 #define BundledDir "..\..\target\bundled"
 
@@ -37,12 +37,12 @@ UninstallDisplayName={#ProductName}
 
 [Files]
 ; The VST3 is a folder bundle on Windows too → Common Files\VST3
-Source: "{#BundledDir}\Compose VST.vst3\*"; DestDir: "{commoncf64}\VST3\Compose VST.vst3"; \
+Source: "{#BundledDir}\Codec.vst3\*"; DestDir: "{commoncf64}\VST3\Codec.vst3"; \
     Flags: recursesubdirs createallsubdirs ignoreversion
 ; CLAP bundle → Common Files\CLAP (skipped if you didn't build a .clap)
-Source: "{#BundledDir}\Compose VST.clap\*"; DestDir: "{commoncf64}\CLAP\Compose VST.clap"; \
+Source: "{#BundledDir}\Codec.clap\*"; DestDir: "{commoncf64}\CLAP\Codec.clap"; \
     Flags: recursesubdirs createallsubdirs ignoreversion skipifsourcedoesntexist
 
 [UninstallDelete]
-Type: filesandordirs; Name: "{commoncf64}\VST3\Compose VST.vst3"
-Type: filesandordirs; Name: "{commoncf64}\CLAP\Compose VST.clap"
+Type: filesandordirs; Name: "{commoncf64}\VST3\Codec.vst3"
+Type: filesandordirs; Name: "{commoncf64}\CLAP\Codec.clap"

@@ -4,7 +4,7 @@ These build end-user installers that drop the bundled plugin into the system
 plugin folders. Build the bundle first (from the repo root):
 
 ```bash
-cargo xtask bundle compose-vst-plugin --release
+cargo xtask bundle codec --release
 ```
 
 ## macOS — `.pkg`
@@ -17,8 +17,8 @@ cargo xtask bundle compose-vst-plugin --release
 
 Installs:
 
-- `Compose VST.vst3` → `/Library/Audio/Plug-Ins/VST3/`
-- `Compose VST.clap` → `/Library/Audio/Plug-Ins/CLAP/`
+- `Codec.vst3` → `/Library/Audio/Plug-Ins/VST3/`
+- `Codec.clap` → `/Library/Audio/Plug-Ins/CLAP/`
 
 Tools: `pkgbuild` / `productbuild`, included with the Xcode Command Line Tools
 (`xcode-select --install`).
@@ -30,12 +30,12 @@ and notarize you need an Apple Developer account:
 
 ```bash
 # One-time: store notarization credentials in the keychain
-xcrun notarytool store-credentials "compose-vst" \
+xcrun notarytool store-credentials "codec" \
     --apple-id "you@example.com" --team-id "TEAMID" --password "app-specific-password"
 
 # Build, sign the installer, and notarize + staple
 INSTALLER_SIGN_ID="Developer ID Installer: Your Name (TEAMID)" \
-NOTARY_PROFILE="compose-vst" \
+NOTARY_PROFILE="codec" \
     ./packaging/macos/build-pkg.sh
 ```
 
@@ -49,14 +49,14 @@ Build the bundle **on Windows** (cross-compiling the GUI from macOS/Linux is
 impractical), then compile the installer with [Inno Setup](https://jrsoftware.org/isinfo.php):
 
 ```bat
-cargo xtask bundle compose-vst-plugin --release
+cargo xtask bundle codec --release
 iscc packaging\windows\installer.iss
 ```
 
 Produces `dist\codec-<version>-setup.exe`, which installs:
 
-- `Compose VST.vst3` → `C:\Program Files\Common Files\VST3\`
-- `Compose VST.clap` → `C:\Program Files\Common Files\CLAP\`
+- `Codec.vst3` → `C:\Program Files\Common Files\VST3\`
+- `Codec.clap` → `C:\Program Files\Common Files\CLAP\`
 
 Before shipping, generate a stable `AppId` GUID (Inno IDE → *Tools → Generate GUID*)
 and bump `ProductVersion` in `installer.iss`. Optional Authenticode signing is done

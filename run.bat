@@ -1,5 +1,5 @@
 @echo off
-REM Launch Compose VST standalone (Rust audio + Compose UI)
+REM Launch Codec standalone (Rust audio + Compose UI)
 REM Usage:
 REM   run.bat                              loop the bundled loop.wav (default)
 REM   run.bat --tone sine                  440Hz sine test tone
@@ -29,7 +29,7 @@ if not defined SOURCE_SPECIFIED (
 
 echo ▶ Starting Rust audio engine...
 cd /d "%SCRIPT_DIR%plugin"
-start "ComposeVST-Audio" /B cargo run --features standalone --bin compose-vst-standalone -- %RUST_ARGS%
+start "Codec-Audio" /B cargo run --features standalone --bin codec-standalone -- %RUST_ARGS%
 
 REM Give the Rust IPC server a moment to bind
 timeout /t 2 /nobreak >nul

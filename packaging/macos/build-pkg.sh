@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a macOS .pkg installer for the Compose VST plugin.
+# Build a macOS .pkg installer for the Codec plugin.
 # Installs the VST3 (+ CLAP) bundles system-wide into /Library/Audio/Plug-Ins,
 # which is why a .pkg is the right tool — it handles the admin prompt for you.
 #
@@ -18,10 +18,10 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-PRODUCT_NAME="Compose VST"
-PKG_IDENTIFIER="com.compose-vst.installer"
-VST3_NAME="Compose VST.vst3"
-CLAP_NAME="Compose VST.clap"
+PRODUCT_NAME="Codec"
+PKG_IDENTIFIER="com.commit451.codec.installer"
+VST3_NAME="Codec.vst3"
+CLAP_NAME="Codec.clap"
 # Base name for the produced installer file (dist/<basename>-<version>.pkg).
 PKG_BASENAME="codec"
 
@@ -47,7 +47,7 @@ CLAP_DEST="$PKGROOT/Library/Audio/Plug-Ins/CLAP"
 
 if [[ "$SKIP_BUILD" -eq 0 ]]; then
     echo "▶ Building release bundle (v$VERSION)…"
-    cargo xtask bundle compose-vst-plugin --release "${UNIVERSAL[@]}"
+    cargo xtask bundle codec --release "${UNIVERSAL[@]}"
 fi
 
 if [[ ! -d "$BUNDLED/$VST3_NAME" ]]; then

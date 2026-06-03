@@ -1,5 +1,5 @@
 # Metadata for nih-plug's `cargo xtask bundle` command.
 # Maps the cargo package name to a human-readable bundle name, so the output is
-# "Compose VST.vst3" / "Compose VST.clap" instead of "compose-vst-plugin.*".
-[compose-vst-plugin]
-name = "Compose VST"
+# "Codec.vst3" / "Codec.clap" instead of "codec.*".
+[codec]
+name = "Codec"

@@ -1,4 +1,4 @@
-use crate::{ParamEdit, ParamId, Shared};
+use crate::{CodecParams, ParamEdit, ParamId, Shared};
 use crossbeam_channel::{bounded, Sender};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
@@ -9,14 +9,26 @@ use std::thread;
 
 const LISTEN_ADDR: &str = "127.0.0.1:9847";
 
+/// All parameter values plus meters, sent to the UI ~30 Hz.
 #[derive(Debug, Serialize)]
 pub struct StateMessage {
     #[serde(rename = "type")]
-    pub msg_type: String,
-    pub cutoff: f32,
-    pub resonance: f32,
-    pub sweep: f32,
+    pub msg_type: &'static str,
+    pub density: f32,
+    pub size: f32,
+    pub position: f32,
+    pub spray: f32,
+    pub pitch: f32,
+    pub pitch_spread: f32,
+    pub pan_spread: f32,
+    pub feedback: f32,
+    pub mix: f32,
+    pub sync: i32,
+    pub reverse: i32,
+    pub division: i32,
     pub bpm: f32,
+    pub level: f32,
+    pub grains: i32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -31,16 +43,24 @@ pub struct IncomingMessage {
 
 fn param_id(name: &str) -> Option<ParamId> {
     match name {
-        "cutoff" => Some(ParamId::Cutoff),
-        "resonance" => Some(ParamId::Resonance),
-        "sweep" | "sweep_depth" => Some(ParamId::SweepDepth),
+        "density" => Some(ParamId::Density),
+        "size" => Some(ParamId::Size),
+        "position" => Some(ParamId::Position),
+        "spray" => Some(ParamId::Spray),
+        "pitch" => Some(ParamId::Pitch),
+        "pitch_spread" => Some(ParamId::PitchSpread),
+        "pan_spread" => Some(ParamId::PanSpread),
+        "feedback" => Some(ParamId::Feedback),
+        "mix" => Some(ParamId::Mix),
+        "sync" => Some(ParamId::Sync),
+        "reverse" => Some(ParamId::Reverse),
+        "division" => Some(ParamId::Division),
         _ => None,
     }
 }
 
 /// Runs in a background thread, managing the TCP server for UI connections.
 pub struct IpcServer {
-    /// Send state updates to the UI.
     pub state_tx: Sender<StateMessage>,
     shared: Arc<Shared>,
     running: Arc<AtomicBool>,
@@ -96,7 +116,6 @@ impl IpcServer {
                     let shared_r = shared.clone();
                     let running_r = running.clone();
 
-                    // Clone stream for writing
                     let write_stream = match stream.try_clone() {
                         Ok(s) => s,
                         Err(_) => continue,
@@ -128,15 +147,13 @@ impl IpcServer {
                             }
                         }
                         // Connection closed: drop the connected flag and release any
-                        // gesture that was left open by an in-flight drag.
+                        // gestures left open by an in-flight drag.
                         shared_r.ui_connected.store(false, Ordering::Relaxed);
-                        let _ = shared_r.edit_tx.try_send(ParamEdit::End(ParamId::Cutoff));
-                        let _ = shared_r.edit_tx.try_send(ParamEdit::End(ParamId::Resonance));
-                        let _ = shared_r.edit_tx.try_send(ParamEdit::End(ParamId::SweepDepth));
+                        release_all_gestures(&shared_r);
                         nih_plug::prelude::nih_log!("IPC: client disconnected");
                     });
 
-                    // Writer: drain state_rx and send to client
+                    // Writer: drain state_rx and send to client.
                     let running_w = running.clone();
                     let state_rx_clone = state_rx.clone();
                     thread::spawn(move || {
@@ -169,14 +186,25 @@ impl IpcServer {
         }
     }
 
-    /// Send current parameter state to the UI.
-    pub fn send_state(&self, cutoff: f32, resonance: f32, sweep: f32, bpm: f32) {
+    /// Send the current parameter state + meters to the UI.
+    pub fn send_state(&self, params: &CodecParams, bpm: f32, level: f32) {
         let _ = self.state_tx.try_send(StateMessage {
-            msg_type: "state".to_string(),
-            cutoff,
-            resonance,
-            sweep,
+            msg_type: "state",
+            density: params.density.value(),
+            size: params.size.value(),
+            position: params.position.value(),
+            spray: params.spray.value(),
+            pitch: params.pitch.value(),
+            pitch_spread: params.pitch_spread.value(),
+            pan_spread: params.pan_spread.value(),
+            feedback: params.feedback.value(),
+            mix: params.mix.value(),
+            sync: params.sync.value() as i32,
+            reverse: params.reverse.value() as i32,
+            division: params.division.value().index(),
             bpm,
+            level,
+            grains: self.shared.active_grains.load(Ordering::Relaxed) as i32,
         });
     }
 }
@@ -206,6 +234,25 @@ fn handle_message(shared: &Shared, msg: &IncomingMessage) {
             }
         }
         _ => {}
+    }
+}
+
+fn release_all_gestures(shared: &Shared) {
+    for id in [
+        ParamId::Density,
+        ParamId::Size,
+        ParamId::Position,
+        ParamId::Spray,
+        ParamId::Pitch,
+        ParamId::PitchSpread,
+        ParamId::PanSpread,
+        ParamId::Feedback,
+        ParamId::Mix,
+        ParamId::Sync,
+        ParamId::Reverse,
+        ParamId::Division,
+    ] {
+        let _ = shared.edit_tx.try_send(ParamEdit::End(id));
     }
 }
 

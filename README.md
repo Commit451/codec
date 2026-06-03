@@ -1,6 +1,8 @@
-# compose-vst
+# Codec
 
-A VST3/CLAP audio plugin with a **Rust** backend (nih-plug) and a **Compose Multiplatform** desktop UI.
+A **granular cloud** audio FX plugin (VST3/CLAP) with a **Rust** backend (nih-plug)
+and a **Compose Multiplatform** desktop UI. Incoming audio is captured into a rolling
+buffer and resprayed as a cloud of overlapping grains you sculpt with knobs.
 
 ## Architecture
 
@@ -8,24 +10,53 @@ A VST3/CLAP audio plugin with a **Rust** backend (nih-plug) and a **Compose Mult
 ┌─────────────────┐     TCP/JSON      ┌──────────────────────┐
 │  DAW (host)      │    localhost:9847  │  Compose Desktop UI  │
 │                  │◄─────────────────►│                      │
-│  ┌──────────────┐│                   │  - Cutoff slider     │
-│  │ Rust Plugin  ││   state updates   │  - Resonance slider  │
-│  │ (nih-plug)   ││ ────────────────► │  - Freq response plot│
-│  │              ││   param changes   │                      │
-│  │ Biquad LPF   ││ ◄──────────────── │  Material 3 dark UI  │
+│  ┌──────────────┐│   state + meters  │  Density / Size /    │
+│  │ Rust Plugin  ││ ────────────────► │  Position / Pitch /  │
+│  │ (nih-plug)   ││                   │  Spray / Feedback …  │
+│  │              ││   param changes   │  knobs + buttons     │
+│  │ Granular     ││ ◄──────────────── │                      │
+│  │ engine       ││                   │  Material 3 dark UI  │
 │  └──────────────┘│                   │                      │
 └─────────────────┘                   └──────────────────────┘
 ```
 
-**Plugin (Rust)** — loaded by the DAW as a native `.vst3` shared library. Handles real-time audio processing with zero GC pauses. Ships a minimal in-host **egui editor** that doubles as a bridge: it owns the host `ParamSetter`, so edits coming from the Compose UI are applied as real host parameter gestures (recorded as automation, saved with the project).
+**Plugin (Rust)** — loaded by the DAW as a native VST3/CLAP. A real-time-safe granular
+engine (fixed grain pool + pre-allocated buffer, no allocation in the audio thread).
+Ships a minimal in-host **egui editor** that doubles as a bridge: it owns the host
+`ParamSetter`, so edits coming from the Compose UI are applied as real host parameter
+gestures (recorded as automation, saved with the project).
 
-**UI (Compose Desktop)** — separate JVM process. Communicates with the plugin over TCP with newline-delimited JSON. Optional — the in-host editor works on its own.
+**UI (Compose Desktop)** — separate JVM process with rotary knobs and toggle buttons.
+Talks to the plugin over TCP with newline-delimited JSON. Optional — the in-host editor
+works on its own.
+
+## Parameters
+
+| Knob | Range | What it does |
+|------|-------|--------------|
+| Density | 0.5–150 /s | Grains spawned per second (overlap). |
+| Grain Size | 5–500 ms | Length of each grain. |
+| Position | 0–1 | How far back in the buffer grains read. |
+| Spray | 0–1 | Random spread of the read position. |
+| Pitch | ±24 st | Per-grain transpose. |
+| Pitch Spread | 0–1 | Random per-grain pitch variation. |
+| Pan Spread | 0–1 | Stereo spread of grains. |
+| Feedback | 0–0.95 | Wet signal fed back into the buffer (granular-delay tails). |
+| Mix | 0–1 | Dry/wet blend. |
+
+Buttons: **Sync** (lock grain size to the host tempo + **Division** selector),
+**Reverse** (grains play backwards). The current **BPM**, output **level**, and active
+**grain count** are shown live.
 
 ## Automation & tempo
 
-- `cutoff`, `resonance`, and `sweep` are real plugin parameters, so the host can automate them directly.
-- Edits from the Compose UI travel over IPC and are replayed through the host parameter system **on the GUI thread by the in-host editor**, which is the only place nih-plug allows parameter writes. Keep the in-host editor window open for Compose edits to be recorded/persisted.
-- The plugin reads the host transport every block: the current **BPM** is shown in both UIs, and the `sweep` parameter drives a **bar-synced** sine sweep of the cutoff (±2 octaves at full depth), phase-locked to the host timeline so it lines up on every replay.
+- Every knob/button is a real plugin parameter, so the host can automate them directly.
+- Edits from the Compose UI travel over IPC and are replayed through the host parameter
+  system **on the GUI thread by the in-host editor** — the only place nih-plug allows
+  parameter writes. Keep the in-host editor window open for Compose edits to be
+  recorded/persisted.
+- The plugin reads the host transport every block; with **Sync** on, grain size locks to
+  the selected note division (phase-independent, derived from the host tempo).
 
 ## Building
 
@@ -35,28 +66,28 @@ A VST3/CLAP audio plugin with a **Rust** backend (nih-plug) and a **Compose Mult
 - JDK 21+ — for Compose Desktop
 - Gradle wrapper is included in `ui/`
 
-### Rust Plugin (release `.vst3` / `.clap`)
+### Rust plugin (release `.vst3` / `.clap`)
 
-A loadable VST3/CLAP is a *bundle* (a structured directory with an `Info.plist`,
-the right per-platform layout, and a code signature), not the raw `.dylib`/`.dll`
-that `cargo build` emits. Use the bundled [`cargo xtask`](https://github.com/robbert-vdh/nih-plug/tree/master/nih_plug_xtask)
+A loadable VST3/CLAP is a *bundle* (a structured directory with an `Info.plist`, the
+right per-platform layout, and a code signature), not the raw `.dylib`/`.dll` that
+`cargo build` emits. Use the bundled [`cargo xtask`](https://github.com/robbert-vdh/nih-plug/tree/master/nih_plug_xtask)
 command — run it from the **repo root** (it's a Cargo workspace):
 
 ```bash
-cargo xtask bundle compose-vst-plugin --release
+cargo xtask bundle codec --release
 ```
 
 Output (named via `bundler.toml`):
 
 ```
-target/bundled/Compose VST.vst3
-target/bundled/Compose VST.clap
+target/bundled/Codec.vst3
+target/bundled/Codec.clap
 ```
 
 On macOS, add `--universal` to produce a fat arm64 + x86_64 binary:
 
 ```bash
-cargo xtask bundle compose-vst-plugin --release --universal
+cargo xtask bundle codec --release --universal
 ```
 
 `cd plugin && cargo build` still works for a quick compile check, but it does **not**
@@ -74,12 +105,22 @@ Copy the bundle into the standard plugin folder for your OS, then rescan in your
 
 ```bash
 # macOS example
-cp -R "target/bundled/Compose VST.vst3" ~/Library/Audio/Plug-Ins/VST3/
+cp -R "target/bundled/Codec.vst3" ~/Library/Audio/Plug-Ins/VST3/
 ```
 
 > Ableton Live does not load CLAP — use the VST3 there. In **Live → Settings →
 > Plug-Ins**, enable *Use VST3 Plug-In System Folders* (or add a custom folder),
-> then click **Rescan**.
+> then click **Rescan**. Codec is an audio effect — drop it on an audio track.
+
+### Quick test without a DAW
+
+```bash
+./run.sh                 # loop the bundled loop.wav through the granular engine
+./run.sh --tone sine     # granulate a test tone
+```
+
+This launches the standalone Rust audio engine plus the Compose UI; the knobs drive the
+engine over IPC (no host tempo, so Sync/Division are inert here).
 
 ### Compose Desktop UI
 
@@ -118,49 +159,53 @@ how the scripts are wired up.
 
 Newline-delimited JSON over TCP on `localhost:9847`.
 
-**Plugin → UI (state updates, ~30Hz):**
+**Plugin → UI (state + meters, ~30Hz):**
 ```json
-{"type":"state","cutoff":1000.0,"resonance":0.5,"sweep":0.0,"bpm":120.0}
-```
-(`sweep`/`bpm` are omitted by the standalone harness, which has no host transport.)
-
-**UI → Plugin (parameter changes):**
-```json
-{"type":"set_param","name":"cutoff","value":2000.0}
-{"type":"set_param","name":"resonance","value":0.7}
-{"type":"set_param","name":"sweep","value":0.5}
+{"type":"state","density":25.0,"size":80.0,"position":0.1,"spray":0.0,
+ "pitch":0.0,"pitch_spread":0.0,"pan_spread":0.5,"feedback":0.0,"mix":1.0,
+ "sync":0,"reverse":0,"division":4,"bpm":120.0,"level":0.3,"grains":18}
 ```
 
-**UI → Plugin (automation gestures — wrap a slider drag so the host records one gesture):**
+**UI → Plugin (parameter changes — plain values; toggles use 0/1):**
 ```json
-{"type":"gesture","name":"cutoff","action":"begin"}
-{"type":"gesture","name":"cutoff","action":"end"}
+{"type":"set_param","name":"density","value":40.0}
+{"type":"set_param","name":"pitch","value":-12.0}
+{"type":"set_param","name":"reverse","value":1}
+```
+
+**UI → Plugin (automation gestures — wrap a knob drag so the host records one gesture):**
+```json
+{"type":"gesture","name":"density","action":"begin"}
+{"type":"gesture","name":"density","action":"end"}
 ```
 
 ## Project Structure
 
 ```
-compose-vst/
-├── plugin/                    # Rust VST3/CLAP plugin
-│   ├── Cargo.toml
+codec/
+├── Cargo.toml                # workspace (plugin + xtask)
+├── bundler.toml              # bundle name mapping for cargo xtask
+├── plugin/                   # Rust VST3/CLAP plugin (package: codec)
 │   └── src/
-│       ├── lib.rs             # Plugin entry + DSP loop + transport/tempo read
-│       ├── editor.rs          # Minimal in-host egui UI + host-param bridge
-│       ├── filter.rs          # Biquad low-pass filter
-│       └── ipc.rs             # TCP server for UI communication
-└── ui/                        # Compose Desktop app
-    ├── build.gradle.kts
-    ├── settings.gradle.kts
+│       ├── lib.rs            # Plugin entry, params, transport/tempo, process loop
+│       ├── granular.rs       # Real-time granular engine (grain pool + scheduler)
+│       ├── editor.rs         # Minimal in-host egui UI + host-param bridge
+│       ├── ipc.rs            # TCP server for UI communication
+│       ├── standalone.rs     # Standalone tester (cpal) — `codec-standalone`
+│       └── ipc_standalone.rs # IPC server for standalone mode
+├── xtask/                    # nih-plug bundler entry point
+├── packaging/                # macOS .pkg + Windows Inno Setup installers
+└── ui/                       # Compose Desktop app
     └── src/main/kotlin/com/composevst/
-        ├── Main.kt            # App entry + main Compose UI
-        ├── IpcClient.kt       # TCP client with auto-reconnect
+        ├── Main.kt           # Knob/button panel
+        ├── IpcClient.kt      # TCP client with auto-reconnect
         └── components/
-            ├── ParamSlider.kt         # Logarithmic/linear slider
-            └── FrequencyResponse.kt   # Biquad magnitude response plot
+            ├── Knob.kt       # Rotary knob (drag + gesture)
+            └── Controls.kt   # Toggle buttons, division selector, level meter
 ```
 
 ## License
 
-skyhook is available under the MIT license. See the LICENSE file for more info.
+Codec is available under the MIT license. See the LICENSE file for more info.
 
 \ ゜o゜)ノ

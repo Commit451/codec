@@ -1,7 +1,9 @@
 package com.composevst
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -11,192 +13,214 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
-import com.composevst.components.FrequencyResponsePlot
-import com.composevst.components.ParamSlider
-import kotlin.math.roundToInt
+import com.composevst.components.DivisionSelector
+import com.composevst.components.Knob
+import com.composevst.components.LevelMeter
+import com.composevst.components.ToggleButton
 
 fun main() = application {
-    val windowState = rememberWindowState(size = DpSize(480.dp, 620.dp))
-
+    val windowState = rememberWindowState(size = DpSize(560.dp, 640.dp))
     Window(
         onCloseRequest = ::exitApplication,
-        title = "Compose VST - Low Pass Filter",
+        title = "Codec — Granular",
         state = windowState,
-        resizable = true
+        resizable = true,
     ) {
-        ComposeVstApp()
+        CodecApp()
     }
 }
 
 @Composable
-fun ComposeVstApp() {
+fun CodecApp() {
     val client = remember { IpcClient() }
-    val pluginState by client.state.collectAsState()
+    val s by client.state.collectAsState()
     val isConnected by client.connected.collectAsState()
+    // Per-param local override held while a knob is being dragged (removed on release),
+    // so the knob doesn't jitter against the ~30 Hz state echo.
+    val overrides = remember { mutableStateMapOf<String, Float>() }
 
-    // Local state for when UI is driving changes (avoids jitter)
-    var localCutoff by remember { mutableStateOf<Float?>(null) }
-    var localResonance by remember { mutableStateOf<Float?>(null) }
-    var localSweep by remember { mutableStateOf<Float?>(null) }
+    LaunchedEffect(Unit) { client.connect() }
+    DisposableEffect(Unit) { onDispose { client.disconnect() } }
 
-    val cutoff = localCutoff ?: pluginState.cutoff
-    val resonance = localResonance ?: pluginState.resonance
-    val sweep = localSweep ?: pluginState.sweep
-
-    // Sync from plugin when not actively dragging
-    LaunchedEffect(pluginState) {
-        localCutoff = null
-        localResonance = null
-        localSweep = null
-    }
-
-    LaunchedEffect(Unit) {
-        client.connect()
-    }
-
-    DisposableEffect(Unit) {
-        onDispose { client.disconnect() }
-    }
-
-    MaterialTheme(
-        colorScheme = darkColorScheme()
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background
-        ) {
+    MaterialTheme(colorScheme = darkColorScheme()) {
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp)
             ) {
-                // Header
-                Row(
+                Header(bpm = s.bpm, connected = isConnected)
+                Spacer(Modifier.height(12.dp))
+
+                // Activity: output level + grain count.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "${s.grains} grains",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.width(80.dp),
+                    )
+                    LevelMeter(level = s.level, modifier = Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(8.dp))
+
+                Card(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(12.dp),
                 ) {
-                    Column {
-                        Text(
-                            "Low Pass Filter",
-                            style = MaterialTheme.typography.headlineSmall,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Text(
-                            text = if (pluginState.bpm > 0f)
-                                "♩ = %.1f BPM".format(pluginState.bpm)
-                            else
-                                "No host tempo",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    // Connection indicator
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = if (isConnected)
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-                        else
-                            MaterialTheme.colorScheme.error.copy(alpha = 0.2f)
-                    ) {
-                        Text(
-                            text = if (isConnected) "Connected" else "Disconnected",
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (isConnected)
-                                MaterialTheme.colorScheme.primary
-                            else
-                                MaterialTheme.colorScheme.error
-                        )
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        KnobRow {
+                            knob("density", "Density", s.density, 0.5f..150f, client, overrides, true) {
+                                "%.1f/s".format(it)
+                            }
+                            knob("size", "Grain Size", s.size, 5f..500f, client, overrides, true) {
+                                "%.0f ms".format(it)
+                            }
+                            knob("position", "Position", s.position, 0f..1f, client, overrides) {
+                                "%.2f".format(it)
+                            }
+                        }
+                        KnobRow {
+                            knob("spray", "Spray", s.spray, 0f..1f, client, overrides) { "%.2f".format(it) }
+                            knob("pitch", "Pitch", s.pitch, -24f..24f, client, overrides) {
+                                "%+.1f st".format(it)
+                            }
+                            knob("pitch_spread", "Pitch Spr", s.pitchSpread, 0f..1f, client, overrides) {
+                                "%.2f".format(it)
+                            }
+                        }
+                        KnobRow {
+                            knob("pan_spread", "Pan Spr", s.panSpread, 0f..1f, client, overrides) {
+                                "%.2f".format(it)
+                            }
+                            knob("feedback", "Feedback", s.feedback, 0f..0.95f, client, overrides) {
+                                "%.2f".format(it)
+                            }
+                            knob("mix", "Mix", s.mix, 0f..1f, client, overrides) {
+                                "%.0f%%".format(it * 100)
+                            }
+                        }
                     }
                 }
 
                 Spacer(Modifier.height(16.dp))
 
-                // Frequency response plot
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    shape = RoundedCornerShape(12.dp)
+                // Buttons.
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    FrequencyResponsePlot(
-                        cutoffHz = cutoff,
-                        resonance = resonance,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    ToggleButton("Sync", s.sync, onClick = { toggle(client, "sync", s.sync) })
+                    ToggleButton("Reverse", s.reverse, onClick = { toggle(client, "reverse", s.reverse) })
                 }
 
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(12.dp))
 
-                // Controls
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Column(modifier = Modifier.padding(vertical = 8.dp)) {
-                        ParamSlider(
-                            label = "Cutoff Frequency",
-                            value = cutoff,
-                            onValueChange = { newVal ->
-                                localCutoff = newVal
-                                client.setParam("cutoff", newVal)
-                            },
-                            range = 20f..20000f,
-                            logarithmic = true,
-                            valueDisplay = { v ->
-                                if (v >= 1000f) "%.1f kHz".format(v / 1000f)
-                                else "${v.roundToInt()} Hz"
-                            },
-                            onGestureStart = { client.beginGesture("cutoff") },
-                            onGestureEnd = { client.endGesture("cutoff") }
-                        )
-
-                        HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant
-                        )
-
-                        ParamSlider(
-                            label = "Resonance",
-                            value = resonance,
-                            onValueChange = { newVal ->
-                                localResonance = newVal
-                                client.setParam("resonance", newVal)
-                            },
-                            range = 0f..1f,
-                            logarithmic = false,
-                            valueDisplay = { "%.2f".format(it) },
-                            onGestureStart = { client.beginGesture("resonance") },
-                            onGestureEnd = { client.endGesture("resonance") }
-                        )
-
-                        HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant
-                        )
-
-                        ParamSlider(
-                            label = "Tempo Sweep (bar-synced)",
-                            value = sweep,
-                            onValueChange = { newVal ->
-                                localSweep = newVal
-                                client.setParam("sweep", newVal)
-                            },
-                            range = 0f..1f,
-                            logarithmic = false,
-                            valueDisplay = { if (it <= 0.001f) "Off" else "%.2f".format(it) },
-                            onGestureStart = { client.beginGesture("sweep") },
-                            onGestureEnd = { client.endGesture("sweep") }
-                        )
-                    }
-                }
+                Text(
+                    "Tempo division",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
+                DivisionSelector(
+                    selected = s.division,
+                    enabled = s.sync,
+                    onSelect = { i ->
+                        client.beginGesture("division")
+                        client.setParam("division", i.toFloat())
+                        client.endGesture("division")
+                    },
+                )
             }
         }
     }
+}
+
+@Composable
+private fun Header(bpm: Float, connected: Boolean) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column {
+            Text(
+                "Codec",
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            Text(
+                "Granular Cloud",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                text = if (bpm > 0f) "♩ %.1f".format(bpm) else "no tempo",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = if (connected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                else MaterialTheme.colorScheme.error.copy(alpha = 0.2f),
+            ) {
+                Text(
+                    text = if (connected) "Connected" else "Disconnected",
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun KnobRow(content: @Composable RowScope.() -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        content = content,
+    )
+}
+
+@Composable
+private fun knob(
+    name: String,
+    label: String,
+    stateValue: Float,
+    range: ClosedFloatingPointRange<Float>,
+    client: IpcClient,
+    overrides: MutableMap<String, Float>,
+    logarithmic: Boolean = false,
+    valueDisplay: (Float) -> String,
+) {
+    val value = overrides[name] ?: stateValue
+    Knob(
+        label = label,
+        value = value,
+        onValueChange = { v ->
+            overrides[name] = v
+            client.setParam(name, v)
+        },
+        range = range,
+        logarithmic = logarithmic,
+        valueDisplay = valueDisplay,
+        onGestureStart = { client.beginGesture(name) },
+        onGestureEnd = {
+            client.endGesture(name)
+            overrides.remove(name) // let host/state drive the knob again after release
+        },
+    )
+}
+
+private fun toggle(client: IpcClient, name: String, current: Boolean) {
+    val next = !current
+    client.beginGesture(name)
+    client.setParam(name, if (next) 1f else 0f)
+    client.endGesture(name)
 }

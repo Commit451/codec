@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launch Compose VST standalone (Rust audio + Compose UI)
+# Launch Codec standalone (Rust audio + Compose UI)
 # Usage:
 #   ./run.sh                              # loop the bundled loop.wav (default)
 #   ./run.sh --tone sine                  # 440Hz sine test tone
@@ -45,7 +45,7 @@ fi
 # Build and launch Rust standalone
 echo "▶ Starting Rust audio engine..."
 cd "$SCRIPT_DIR/plugin"
-cargo run --features standalone --bin compose-vst-standalone -- "${RUST_ARGS[@]}" &
+cargo run --features standalone --bin codec-standalone -- "${RUST_ARGS[@]}" &
 RUST_PID=$!
 
 # Give the Rust IPC server a moment to bind

@@ -8,12 +8,23 @@ import java.io.InputStreamReader
 import java.io.PrintWriter
 import java.net.Socket
 
+/** Mirror of the plugin's granular parameters + meters. Defaults match the plugin. */
 data class PluginState(
-    val cutoff: Float = 1000f,
-    val resonance: Float = 0f,
-    val sweep: Float = 0f,
-    /** Host tempo in BPM; 0 means the host reported no tempo. */
-    val bpm: Float = 0f
+    val density: Float = 25f,
+    val size: Float = 80f,
+    val position: Float = 0.1f,
+    val spray: Float = 0f,
+    val pitch: Float = 0f,
+    val pitchSpread: Float = 0f,
+    val panSpread: Float = 0.5f,
+    val feedback: Float = 0f,
+    val mix: Float = 1f,
+    val sync: Boolean = false,
+    val reverse: Boolean = false,
+    val division: Int = 4,
+    val bpm: Float = 0f,
+    val level: Float = 0f,
+    val grains: Int = 0,
 )
 
 class IpcClient(
@@ -36,7 +47,7 @@ class IpcClient(
             while (isActive) {
                 try {
                     val sock = Socket(host, port)
-                    sock.tcpNoDelay = true  // Disable Nagle's for low latency
+                    sock.tcpNoDelay = true
                     socket = sock
                     writer = PrintWriter(sock.getOutputStream(), true)
                     _connected.value = true
@@ -54,47 +65,46 @@ class IpcClient(
                     socket?.close()
                     socket = null
                 }
-                // Retry after delay
                 delay(1000)
             }
         }
     }
 
-    /**
-     * Parse incoming JSON manually to avoid Gson/reflection overhead at 30 updates/sec.
-     * Messages are simple: {"type":"state","cutoff":1000.0,"resonance":0.5}
-     */
     private fun handleMessage(json: String) {
         try {
-            // Fast path: check if it's a state message without full parse
             if (!json.contains("\"state\"")) return
-
-            val cutoff = extractFloat(json, "cutoff") ?: return
-            val resonance = extractFloat(json, "resonance") ?: return
-            // sweep/bpm are absent in standalone mode — default them.
-            val sweep = extractFloat(json, "sweep") ?: 0f
-            val bpm = extractFloat(json, "bpm") ?: 0f
-            _state.value = PluginState(cutoff, resonance, sweep, bpm)
+            fun f(key: String, default: Float): Float = extractFloat(json, key) ?: default
+            _state.value = PluginState(
+                density = f("density", 25f),
+                size = f("size", 80f),
+                position = f("position", 0.1f),
+                spray = f("spray", 0f),
+                pitch = f("pitch", 0f),
+                pitchSpread = f("pitch_spread", 0f),
+                panSpread = f("pan_spread", 0.5f),
+                feedback = f("feedback", 0f),
+                mix = f("mix", 1f),
+                sync = f("sync", 0f) >= 0.5f,
+                reverse = f("reverse", 0f) >= 0.5f,
+                division = f("division", 4f).toInt(),
+                bpm = f("bpm", 0f),
+                level = f("level", 0f),
+                grains = f("grains", 0f).toInt(),
+            )
         } catch (_: Exception) {
             // Ignore malformed messages
         }
     }
 
-    /**
-     * Extract a float value for a given key from a flat JSON string.
-     * Avoids object allocation — just string scanning.
-     */
+    /** Extract a numeric value for `key` from a flat JSON string (no allocation-heavy parse). */
     private fun extractFloat(json: String, key: String): Float? {
         val searchKey = "\"$key\":"
         val keyIdx = json.indexOf(searchKey)
         if (keyIdx == -1) return null
 
-        val valueStart = keyIdx + searchKey.length
-        // Skip whitespace
-        var i = valueStart
+        var i = keyIdx + searchKey.length
         while (i < json.length && json[i] == ' ') i++
 
-        // Read number chars
         val numStart = i
         while (i < json.length && (json[i].isDigit() || json[i] == '.' || json[i] == '-' || json[i] == 'E' || json[i] == 'e' || json[i] == '+')) i++
 
@@ -102,36 +112,24 @@ class IpcClient(
         return json.substring(numStart, i).toFloatOrNull()
     }
 
-    /**
-     * Send a parameter change to the plugin.
-     * Writes directly on the IO thread — no coroutine-per-call overhead.
-     */
+    /** Send a parameter change to the plugin (plain value; e.g. ms, semitones, or 0/1 for toggles). */
     fun setParam(name: String, value: Float) {
-        // Write directly — we're already called from a Compose callback on the main thread,
-        // but PrintWriter is thread-safe and the write is tiny.
-        // If the socket is gone, silently ignore.
         try {
             writer?.println("""{"type":"set_param","name":"$name","value":$value}""")
         } catch (_: Exception) {
-            // Connection may be lost
         }
     }
 
-    /**
-     * Mark the start of an automation gesture (e.g. the user grabbed a slider).
-     * The plugin translates this into a host `begin_set_parameter` so the DAW
-     * records the drag as a single automation gesture.
-     */
+    /** Mark the start of an automation gesture so the host records the drag as one gesture. */
     fun beginGesture(name: String) = sendGesture(name, "begin")
 
-    /** Mark the end of an automation gesture (the user released the slider). */
+    /** Mark the end of an automation gesture. */
     fun endGesture(name: String) = sendGesture(name, "end")
 
     private fun sendGesture(name: String, action: String) {
         try {
             writer?.println("""{"type":"gesture","name":"$name","action":"$action"}""")
         } catch (_: Exception) {
-            // Connection may be lost
         }
     }
 

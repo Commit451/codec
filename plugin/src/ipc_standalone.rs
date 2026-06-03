@@ -1,8 +1,10 @@
 //! Simplified IPC server for standalone mode.
 //! Same JSON protocol as the plugin IPC, callback-based API.
+//! Incoming `set_param` messages invoke `on_param(name, value)`; outgoing state
+//! is sent as pre-serialized JSON lines (the caller owns the schema).
 
-use crossbeam_channel::{Sender, bounded};
-use serde::{Deserialize, Serialize};
+use crossbeam_channel::{bounded, Sender};
+use serde::Deserialize;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -10,14 +12,6 @@ use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
 const LISTEN_ADDR: &str = "127.0.0.1:9847";
-
-#[derive(Debug, Serialize)]
-struct StateMessage {
-    #[serde(rename = "type")]
-    msg_type: String,
-    cutoff: f32,
-    resonance: f32,
-}
 
 #[derive(Debug, Deserialize)]
 struct IncomingMessage {
@@ -29,12 +23,12 @@ struct IncomingMessage {
 
 /// Start the IPC server for standalone mode.
 /// `on_param` is called whenever the UI sends a parameter change.
-/// Returns a sender for state updates (cutoff, resonance) and the server thread handle.
-pub fn start_standalone_ipc<F>(on_param: F) -> (Sender<(f32, f32)>, JoinHandle<()>)
+/// Returns a sender for pre-serialized state JSON lines and the server thread handle.
+pub fn start_standalone_ipc<F>(on_param: F) -> (Sender<String>, JoinHandle<()>)
 where
     F: Fn(&str, f32) + Send + Sync + 'static,
 {
-    let (state_tx, state_rx) = bounded::<(f32, f32)>(64);
+    let (state_tx, state_rx) = bounded::<String>(64);
     let running = Arc::new(AtomicBool::new(true));
     let on_param = Arc::new(on_param);
 
@@ -55,14 +49,12 @@ where
                 Ok((stream, addr)) => {
                     println!("IPC: UI connected from {addr}");
 
-                    // Clone stream for reader and writer
                     let read_stream = match stream.try_clone() {
                         Ok(s) => s,
                         Err(_) => continue,
                     };
                     let write_stream = stream;
 
-                    // Reader thread: blocking reads, no timeout
                     let on_param_clone = on_param.clone();
                     let running_r = running.clone();
                     thread::spawn(move || {
@@ -70,7 +62,6 @@ where
                         println!("IPC: UI disconnected");
                     });
 
-                    // Writer thread: sends state updates to UI
                     let state_rx_clone = state_rx.clone();
                     let running_w = running.clone();
                     thread::spawn(move || {
@@ -92,7 +83,6 @@ where
 }
 
 fn read_loop<F: Fn(&str, f32)>(stream: TcpStream, on_param: &F, running: &AtomicBool) {
-    // Blocking reads — no timeout, will block until data or disconnect
     stream.set_nonblocking(false).ok();
     stream.set_nodelay(true).ok();
     stream.set_read_timeout(None).ok();
@@ -110,7 +100,6 @@ fn read_loop<F: Fn(&str, f32)>(stream: TcpStream, on_param: &F, running: &Atomic
                 {
                     continue;
                 }
-                // Real error (connection reset, etc.)
                 break;
             }
         };
@@ -127,24 +116,13 @@ fn read_loop<F: Fn(&str, f32)>(stream: TcpStream, on_param: &F, running: &Atomic
     }
 }
 
-fn write_loop(
-    stream: TcpStream,
-    state_rx: crossbeam_channel::Receiver<(f32, f32)>,
-    running: &AtomicBool,
-) {
+fn write_loop(stream: TcpStream, state_rx: crossbeam_channel::Receiver<String>, running: &AtomicBool) {
     let mut writer = std::io::BufWriter::new(stream);
     while running.load(Ordering::Relaxed) {
         match state_rx.recv_timeout(std::time::Duration::from_millis(50)) {
-            Ok((cutoff, resonance)) => {
-                let msg = StateMessage {
-                    msg_type: "state".to_string(),
-                    cutoff,
-                    resonance,
-                };
-                if let Ok(json) = serde_json::to_string(&msg) {
-                    if writeln!(writer, "{json}").is_err() || writer.flush().is_err() {
-                        break;
-                    }
+            Ok(line) => {
+                if writeln!(writer, "{line}").is_err() || writer.flush().is_err() {
+                    break;
                 }
             }
             Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
