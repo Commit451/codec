@@ -10,7 +10,10 @@ import java.net.Socket
 
 data class PluginState(
     val cutoff: Float = 1000f,
-    val resonance: Float = 0f
+    val resonance: Float = 0f,
+    val sweep: Float = 0f,
+    /** Host tempo in BPM; 0 means the host reported no tempo. */
+    val bpm: Float = 0f
 )
 
 class IpcClient(
@@ -68,7 +71,10 @@ class IpcClient(
 
             val cutoff = extractFloat(json, "cutoff") ?: return
             val resonance = extractFloat(json, "resonance") ?: return
-            _state.value = PluginState(cutoff, resonance)
+            // sweep/bpm are absent in standalone mode — default them.
+            val sweep = extractFloat(json, "sweep") ?: 0f
+            val bpm = extractFloat(json, "bpm") ?: 0f
+            _state.value = PluginState(cutoff, resonance, sweep, bpm)
         } catch (_: Exception) {
             // Ignore malformed messages
         }
@@ -106,6 +112,24 @@ class IpcClient(
         // If the socket is gone, silently ignore.
         try {
             writer?.println("""{"type":"set_param","name":"$name","value":$value}""")
+        } catch (_: Exception) {
+            // Connection may be lost
+        }
+    }
+
+    /**
+     * Mark the start of an automation gesture (e.g. the user grabbed a slider).
+     * The plugin translates this into a host `begin_set_parameter` so the DAW
+     * records the drag as a single automation gesture.
+     */
+    fun beginGesture(name: String) = sendGesture(name, "begin")
+
+    /** Mark the end of an automation gesture (the user released the slider). */
+    fun endGesture(name: String) = sendGesture(name, "end")
+
+    private fun sendGesture(name: String, action: String) {
+        try {
+            writer?.println("""{"type":"gesture","name":"$name","action":"$action"}""")
         } catch (_: Exception) {
             // Connection may be lost
         }

@@ -1,5 +1,9 @@
-# Rust
+# Rust (workspace target dir lives at the repo root)
+/target/
 plugin/target/
+
+# Packaging output (installers / staged bundles)
+/dist/
 
 # Kotlin/Gradle
 ui/build/

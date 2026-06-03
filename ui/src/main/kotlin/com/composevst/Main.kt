@@ -37,14 +37,17 @@ fun ComposeVstApp() {
     // Local state for when UI is driving changes (avoids jitter)
     var localCutoff by remember { mutableStateOf<Float?>(null) }
     var localResonance by remember { mutableStateOf<Float?>(null) }
+    var localSweep by remember { mutableStateOf<Float?>(null) }
 
     val cutoff = localCutoff ?: pluginState.cutoff
     val resonance = localResonance ?: pluginState.resonance
+    val sweep = localSweep ?: pluginState.sweep
 
     // Sync from plugin when not actively dragging
     LaunchedEffect(pluginState) {
         localCutoff = null
         localResonance = null
+        localSweep = null
     }
 
     LaunchedEffect(Unit) {
@@ -74,11 +77,21 @@ fun ComposeVstApp() {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        "Low Pass Filter",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
+                    Column {
+                        Text(
+                            "Low Pass Filter",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Text(
+                            text = if (pluginState.bpm > 0f)
+                                "♩ = %.1f BPM".format(pluginState.bpm)
+                            else
+                                "No host tempo",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     // Connection indicator
                     Surface(
                         shape = RoundedCornerShape(12.dp),
@@ -139,7 +152,9 @@ fun ComposeVstApp() {
                             valueDisplay = { v ->
                                 if (v >= 1000f) "%.1f kHz".format(v / 1000f)
                                 else "${v.roundToInt()} Hz"
-                            }
+                            },
+                            onGestureStart = { client.beginGesture("cutoff") },
+                            onGestureEnd = { client.endGesture("cutoff") }
                         )
 
                         HorizontalDivider(
@@ -156,7 +171,28 @@ fun ComposeVstApp() {
                             },
                             range = 0f..1f,
                             logarithmic = false,
-                            valueDisplay = { "%.2f".format(it) }
+                            valueDisplay = { "%.2f".format(it) },
+                            onGestureStart = { client.beginGesture("resonance") },
+                            onGestureEnd = { client.endGesture("resonance") }
+                        )
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant
+                        )
+
+                        ParamSlider(
+                            label = "Tempo Sweep (bar-synced)",
+                            value = sweep,
+                            onValueChange = { newVal ->
+                                localSweep = newVal
+                                client.setParam("sweep", newVal)
+                            },
+                            range = 0f..1f,
+                            logarithmic = false,
+                            valueDisplay = { if (it <= 0.001f) "Off" else "%.2f".format(it) },
+                            onGestureStart = { client.beginGesture("sweep") },
+                            onGestureEnd = { client.endGesture("sweep") }
                         )
                     }
                 }

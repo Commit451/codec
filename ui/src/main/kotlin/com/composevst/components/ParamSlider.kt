@@ -18,8 +18,13 @@ fun ParamSlider(
     range: ClosedFloatingPointRange<Float>,
     logarithmic: Boolean = false,
     valueDisplay: (Float) -> String = { "%.2f".format(it) },
+    onGestureStart: () -> Unit = {},
+    onGestureEnd: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    // Tracks whether a drag gesture is currently open, so we emit exactly one
+    // begin/end pair per drag (for host automation recording).
+    var gestureActive by remember { mutableStateOf(false) }
     // For logarithmic sliders, map to/from log space
     val sliderValue = if (logarithmic) {
         val logMin = ln(range.start.toDouble())
@@ -52,6 +57,10 @@ fun ParamSlider(
         Slider(
             value = sliderValue.coerceIn(0f, 1f),
             onValueChange = { normalized ->
+                if (!gestureActive) {
+                    gestureActive = true
+                    onGestureStart()
+                }
                 val newValue = if (logarithmic) {
                     val logMin = ln(range.start.toDouble())
                     val logMax = ln(range.endInclusive.toDouble())
@@ -60,6 +69,12 @@ fun ParamSlider(
                     range.start + normalized * (range.endInclusive - range.start)
                 }
                 onValueChange(newValue.coerceIn(range))
+            },
+            onValueChangeFinished = {
+                if (gestureActive) {
+                    gestureActive = false
+                    onGestureEnd()
+                }
             },
             modifier = Modifier.fillMaxWidth(),
             colors = SliderDefaults.colors(

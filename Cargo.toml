@@ -1,0 +1,9 @@
+[workspace]
+members = ["plugin", "xtask"]
+resolver = "2"
+
+# Profiles must live at the workspace root — Cargo ignores `[profile.*]` in
+# workspace members. These apply to the bundled release plugin.
+[profile.release]
+lto = true
+strip = true

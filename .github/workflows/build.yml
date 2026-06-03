@@ -10,9 +10,6 @@ jobs:
   rust-plugin:
     name: Rust Plugin
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: plugin
     steps:
       - uses: actions/checkout@v4
 
@@ -25,18 +22,29 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            plugin/target
-          key: cargo-${{ hashFiles('plugin/Cargo.lock') }}
+            target
+          key: cargo-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-
 
-      - name: Install ALSA dev
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+      # ALSA for the standalone (cpal); the rest are the GUI build deps pulled in
+      # by the in-host egui editor (egui -> baseview -> OpenGL/X11). Mirrors
+      # nih-plug's own CI dependency list.
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libgl-dev libjack-dev libx11-xcb-dev libxcb1-dev libxcb-dri2-0-dev libxcb-icccm4-dev libxcursor-dev libxkbcommon-dev libxcb-shape0-dev libxcb-xfixes0-dev
 
-      - name: Build VST3 plugin
-        run: cargo build --release
+      - name: Bundle VST3 + CLAP
+        run: cargo xtask bundle compose-vst-plugin --release
 
       - name: Build standalone
         run: cargo build --release --features standalone --bin compose-vst-standalone
+
+      - name: Upload bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: compose-vst-linux
+          path: target/bundled/
 
   compose-ui:
     name: Compose UI
